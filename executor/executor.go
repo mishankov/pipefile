@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os/exec"
+	"runtime"
 )
 
 type Executor struct {
@@ -12,7 +13,12 @@ type Executor struct {
 }
 
 func (e *Executor) Execute(ctx context.Context, stdout, stderr io.Writer, command string) {
-	cmd := exec.Command("/bin/sh", "-c", command)
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/C", command)
+	} else {
+		cmd = exec.Command("/bin/sh", "-c", command)
+	}
 
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
@@ -27,7 +33,12 @@ func (e *Executor) Execute(ctx context.Context, stdout, stderr io.Writer, comman
 
 func (e *Executor) ExecuteMany(stdout, stderr io.Writer, commands ...string) {
 	for _, command := range commands {
-		cmd := exec.Command("/bin/sh", "-c", command)
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			cmd = exec.Command("cmd", "/C", command)
+		} else {
+			cmd = exec.Command("/bin/sh", "-c", command)
+		}
 
 		cmd.Stdout = stdout
 		cmd.Stderr = stderr
