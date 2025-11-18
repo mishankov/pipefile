@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"time"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mishankov/pipefile/executor"
@@ -28,7 +29,9 @@ type step struct {
 }
 
 type model struct {
-	steps []step
+	steps         []step
+	viewport      viewport.Model
+	viewportReady bool
 }
 
 type TickMsg time.Time
@@ -63,6 +66,7 @@ func (m model) Init() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
+	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -78,7 +82,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, doTick())
 
 	case finishMsg:
-		return m, nil
+		content := ""
+		for _, step := range m.steps {
+			content += step.outputBuff.String() + "\n"
+		}
+		m.viewport.SetContent(content)
 
 	case TickMsg:
 		sendTick := false
@@ -89,6 +97,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, determineNextStep(m)
 				} else {
 					sendTick = true
+					m.viewport.SetContent(step.outputBuff.String())
+					m.viewport.GotoBottom()
 				}
 			}
 		}
@@ -96,7 +106,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if sendTick {
 			cmds = append(cmds, doTick())
 		}
+	case tea.WindowSizeMsg:
+		if !m.viewportReady {
+			m.viewport = viewport.New(msg.Width, 20)
+			m.viewport.YPosition = 20
+			m.viewportReady = true
+		} else {
+			m.viewport.Width = msg.Width
+			m.viewport.Height = 20
+		}
 	}
+
+	// Handle keyboard and mouse events in the viewport
+	m.viewport, cmd = m.viewport.Update(msg)
+	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
 }
@@ -135,10 +158,23 @@ func (m model) View() string {
 	// Current running step buffer
 	for _, step := range m.steps {
 		if step.status == stepStatusRunning {
-			logs := lipgloss.NewStyle().
-				Background(lipgloss.Color("#222")).
-				Render(step.outputBuff.String())
-			s += lipgloss.JoinVertical(lipgloss.Left, logs)
+			// str := step.outputBuff.String()
+			// if len(strings.Split(str, "\n")) > 20 {
+			// 	str = strings.Join(strings.Split(str, "\n")[len(strings.Split(str, "\n"))-20:], "\n")
+			// }
+
+			// logs := lipgloss.NewStyle().
+			// 	Background(lipgloss.Color("#222")).
+			// 	Render(str)
+			// s += lipgloss.JoinVertical(lipgloss.Left, logs)
+
+			s += m.viewport.View()
+		}
+
+		if step.status == stepStatusDone {
+			if m.viewportReady {
+				s += m.viewport.View()
+			}
 		}
 	}
 
