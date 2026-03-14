@@ -20,5 +20,6 @@ id = "deploy"
 name = "Deploy"
 needs = ["test"]
 cmds = [
-    "echo 'Deployed!'"
+    "echo 'Deployed!'",
+    "1/0"
 ]
