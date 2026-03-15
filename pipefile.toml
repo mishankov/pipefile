@@ -6,6 +6,13 @@ cmds = [
     "docker build -t pipefile/test ."
 ]
 
+[[steps]]
+id = "parallel_build"
+name = "Build 2"
+cmds = [
+    "echo 'Built!'"
+    # "docker build -t pipefile/test ."
+]
 
 [[steps]]
 id = "test"
