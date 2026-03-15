@@ -10,14 +10,15 @@ import (
 
 type Application struct {
 	pipeFile pipefile.Pipefile
+	baseDir  string
 }
 
-func New(pipeFile pipefile.Pipefile) *Application {
-	return &Application{pipeFile: pipeFile}
+func New(pipeFile pipefile.Pipefile, baseDir string) *Application {
+	return &Application{pipeFile: pipeFile, baseDir: baseDir}
 }
 
 func (a *Application) Run(ctx context.Context) error {
-	model, err := newModel(ctx, a.pipeFile)
+	model, err := newModel(ctx, a.pipeFile, a.baseDir)
 	if err != nil {
 		return err
 	}

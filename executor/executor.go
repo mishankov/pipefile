@@ -9,7 +9,7 @@ import (
 
 type Executor struct{}
 
-func (e *Executor) Execute(ctx context.Context, stdout, stderr io.Writer, command string) error {
+func (e *Executor) Execute(ctx context.Context, stdout, stderr io.Writer, dir, command string) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -19,6 +19,10 @@ func (e *Executor) Execute(ctx context.Context, stdout, stderr io.Writer, comman
 		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
 	} else {
 		cmd = exec.CommandContext(ctx, "/bin/sh", "-c", command)
+	}
+
+	if dir != "" {
+		cmd.Dir = dir
 	}
 
 	cmd.Stdout = stdout
@@ -32,9 +36,9 @@ func (e *Executor) Execute(ctx context.Context, stdout, stderr io.Writer, comman
 	return err
 }
 
-func (e *Executor) ExecuteMany(ctx context.Context, stdout, stderr io.Writer, commands ...string) error {
+func (e *Executor) ExecuteMany(ctx context.Context, stdout, stderr io.Writer, dir string, commands ...string) error {
 	for _, command := range commands {
-		if err := e.Execute(ctx, stdout, stderr, command); err != nil {
+		if err := e.Execute(ctx, stdout, stderr, dir, command); err != nil {
 			return err
 		}
 	}

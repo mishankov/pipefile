@@ -16,7 +16,7 @@ type stepFinishedMsg struct {
 	err   error
 }
 
-type stepRunner func(ctx context.Context, index int, cmds []string, stdout, stderr io.Writer) tea.Cmd
+type stepRunner func(ctx context.Context, index int, dir string, cmds []string, stdout, stderr io.Writer) tea.Cmd
 
 func doTick() tea.Cmd {
 	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
@@ -24,9 +24,9 @@ func doTick() tea.Cmd {
 	})
 }
 
-func defaultStepRunner(ctx context.Context, index int, cmds []string, stdout, stderr io.Writer) tea.Cmd {
+func defaultStepRunner(ctx context.Context, index int, dir string, cmds []string, stdout, stderr io.Writer) tea.Cmd {
 	return func() tea.Msg {
-		err := new(executor.Executor).ExecuteMany(ctx, stdout, stderr, cmds...)
+		err := new(executor.Executor).ExecuteMany(ctx, stdout, stderr, dir, cmds...)
 		return stepFinishedMsg{index: index, err: err}
 	}
 }

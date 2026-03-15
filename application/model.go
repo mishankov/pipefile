@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -27,6 +29,7 @@ const (
 
 type step struct {
 	id, name       string
+	dir            string
 	outputBuff     *logBuffer
 	status         stepStatus
 	cmds, needs    []string
@@ -76,8 +79,8 @@ type model struct {
 
 const headerHeight = 8
 
-func newModel(parent context.Context, file pipefile.Pipefile) (*model, error) {
-	steps, err := buildSteps(file)
+func newModel(parent context.Context, file pipefile.Pipefile, baseDir string) (*model, error) {
+	steps, err := buildSteps(file, baseDir)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +96,7 @@ func newModel(parent context.Context, file pipefile.Pipefile) (*model, error) {
 	}, nil
 }
 
-func buildSteps(file pipefile.Pipefile) ([]step, error) {
+func buildSteps(file pipefile.Pipefile, baseDir string) ([]step, error) {
 	steps := make([]step, 0, len(file.Steps))
 	indexByID := make(map[string]int, len(file.Steps))
 
@@ -105,10 +108,16 @@ func buildSteps(file pipefile.Pipefile) ([]step, error) {
 			return nil, fmt.Errorf("duplicate step id %q", fileStep.Id)
 		}
 
+		dir, err := resolveStepDir(fileStep.Dir, baseDir)
+		if err != nil {
+			return nil, fmt.Errorf("step %q dir %s", fileStep.Id, err)
+		}
+
 		indexByID[fileStep.Id] = i
 		steps = append(steps, step{
 			id:             fileStep.Id,
 			name:           fileStep.Name,
+			dir:            dir,
 			outputBuff:     &logBuffer{},
 			status:         stepStatusReady,
 			cmds:           append([]string(nil), fileStep.Cmds...),
@@ -166,6 +175,32 @@ func validateAcyclic(steps []step) error {
 	}
 
 	return nil
+}
+
+func resolveStepDir(rawDir, baseDir string) (string, error) {
+	rawDir = strings.TrimSpace(rawDir)
+	if rawDir == "" {
+		return "", nil
+	}
+
+	dir := rawDir
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(baseDir, dir)
+	}
+	dir = filepath.Clean(dir)
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return dir, fmt.Errorf("%q does not exist", dir)
+		}
+		return dir, err
+	}
+	if !info.IsDir() {
+		return dir, fmt.Errorf("%q is not a directory", dir)
+	}
+
+	return dir, nil
 }
 
 func (m *model) Init() tea.Cmd {
@@ -230,7 +265,7 @@ func (m *model) scheduleReadySteps() tea.Cmd {
 		m.steps[i].status = stepStatusRunning
 		m.runningCount++
 		startedAny = true
-		cmds = append(cmds, m.runner(m.ctx, i, m.steps[i].cmds, m.steps[i].outputBuff, m.steps[i].outputBuff))
+		cmds = append(cmds, m.runner(m.ctx, i, m.steps[i].dir, m.steps[i].cmds, m.steps[i].outputBuff, m.steps[i].outputBuff))
 	}
 
 	if startedAny {

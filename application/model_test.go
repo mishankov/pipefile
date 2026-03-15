@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -50,11 +52,82 @@ func TestBuildStepsValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := buildSteps(tt.file)
+			_, err := buildSteps(tt.file, "")
 			if err == nil || err.Error() != tt.err {
 				t.Fatalf("expected error %q, got %v", tt.err, err)
 			}
 		})
+	}
+}
+
+func TestBuildStepsRejectsMissingDir(t *testing.T) {
+	t.Parallel()
+
+	missingDir := filepath.Join(t.TempDir(), "missing")
+	file := pipefile.Pipefile{
+		Steps: []pipefile.PipeStep{{Id: "build", Dir: missingDir}},
+	}
+
+	_, err := buildSteps(file, "")
+	want := `step "build" dir "` + filepath.Clean(missingDir) + `" does not exist`
+	if err == nil || err.Error() != want {
+		t.Fatalf("expected error %q, got %v", want, err)
+	}
+}
+
+func TestBuildStepsRejectsFileDir(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	filePath := filepath.Join(root, "not-a-dir")
+	if err := os.WriteFile(filePath, []byte("content"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	file := pipefile.Pipefile{
+		Steps: []pipefile.PipeStep{{Id: "build", Dir: filePath}},
+	}
+
+	_, err := buildSteps(file, "")
+	want := `step "build" dir "` + filepath.Clean(filePath) + `" is not a directory`
+	if err == nil || err.Error() != want {
+		t.Fatalf("expected error %q, got %v", want, err)
+	}
+}
+
+func TestBuildStepsResolvesRelativeDirAgainstBaseDir(t *testing.T) {
+	t.Parallel()
+
+	baseDir := t.TempDir()
+	wantDir := filepath.Join(baseDir, "frontend")
+	if err := os.Mkdir(wantDir, 0o755); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+
+	steps, err := buildSteps(pipefile.Pipefile{
+		Steps: []pipefile.PipeStep{{Id: "build", Dir: "./frontend"}},
+	}, baseDir)
+	if err != nil {
+		t.Fatalf("buildSteps() error = %v", err)
+	}
+
+	if got := steps[0].dir; got != filepath.Clean(wantDir) {
+		t.Fatalf("unexpected dir: got %q want %q", got, filepath.Clean(wantDir))
+	}
+}
+
+func TestBuildStepsWithoutDirLeavesExecutionDirEmpty(t *testing.T) {
+	t.Parallel()
+
+	steps, err := buildSteps(pipefile.Pipefile{
+		Steps: []pipefile.PipeStep{{Id: "build"}},
+	}, "")
+	if err != nil {
+		t.Fatalf("buildSteps() error = %v", err)
+	}
+
+	if steps[0].dir != "" {
+		t.Fatalf("expected empty dir, got %q", steps[0].dir)
 	}
 }
 
@@ -78,6 +151,37 @@ func TestScheduleSingleStep(t *testing.T) {
 	}
 	if !reflect.DeepEqual(starts, []int{0}) {
 		t.Fatalf("unexpected start order: %v", starts)
+	}
+}
+
+func TestScheduleReadyStepsPassesResolvedDirToRunner(t *testing.T) {
+	t.Parallel()
+
+	baseDir := t.TempDir()
+	wantDir := filepath.Join(baseDir, "frontend")
+	if err := os.Mkdir(wantDir, 0o755); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+
+	m := mustTestModelWithBaseDir(t, pipefile.Pipefile{
+		Steps: []pipefile.PipeStep{{Id: "build", Dir: "./frontend"}},
+	}, baseDir)
+
+	var starts []int
+	var dirs []string
+	m.runner = func(_ context.Context, index int, dir string, _ []string, _, _ io.Writer) tea.Cmd {
+		starts = append(starts, index)
+		dirs = append(dirs, dir)
+		return nil
+	}
+
+	if cmd := m.Init(); cmd != nil {
+		_ = cmd()
+	}
+
+	expectStarts(t, starts, []int{0})
+	if !reflect.DeepEqual(dirs, []string{filepath.Clean(wantDir)}) {
+		t.Fatalf("unexpected dirs: got %v want %v", dirs, []string{filepath.Clean(wantDir)})
 	}
 }
 
@@ -215,7 +319,13 @@ func TestSelectedStepNavigationUpdatesViewport(t *testing.T) {
 func mustTestModel(t *testing.T, file pipefile.Pipefile) *model {
 	t.Helper()
 
-	m, err := newModel(context.Background(), file)
+	return mustTestModelWithBaseDir(t, file, "")
+}
+
+func mustTestModelWithBaseDir(t *testing.T, file pipefile.Pipefile, baseDir string) *model {
+	t.Helper()
+
+	m, err := newModel(context.Background(), file, baseDir)
 	if err != nil {
 		t.Fatalf("newModel() error = %v", err)
 	}
@@ -224,7 +334,7 @@ func mustTestModel(t *testing.T, file pipefile.Pipefile) *model {
 }
 
 func recordRunner(starts *[]int) stepRunner {
-	return func(_ context.Context, index int, _ []string, _, _ io.Writer) tea.Cmd {
+	return func(_ context.Context, index int, _ string, _ []string, _, _ io.Writer) tea.Cmd {
 		*starts = append(*starts, index)
 		return nil
 	}
