@@ -3,51 +3,41 @@ package executor
 import (
 	"context"
 	"io"
-	"log/slog"
 	"os/exec"
 	"runtime"
 )
 
-type Executor struct {
-	Finished bool
-}
+type Executor struct{}
 
-func (e *Executor) Execute(ctx context.Context, stdout, stderr io.Writer, command string) {
+func (e *Executor) Execute(ctx context.Context, stdout, stderr io.Writer, command string) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/C", command)
+		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
 	} else {
-		cmd = exec.Command("/bin/sh", "-c", command)
+		cmd = exec.CommandContext(ctx, "/bin/sh", "-c", command)
 	}
 
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 
 	err := cmd.Run()
-	if err != nil {
-		slog.Error("error", "error", err)
+	if err != nil && ctx.Err() != nil {
+		return ctx.Err()
 	}
 
-	e.Finished = true
+	return err
 }
 
-func (e *Executor) ExecuteMany(stdout, stderr io.Writer, commands ...string) {
+func (e *Executor) ExecuteMany(ctx context.Context, stdout, stderr io.Writer, commands ...string) error {
 	for _, command := range commands {
-		var cmd *exec.Cmd
-		if runtime.GOOS == "windows" {
-			cmd = exec.Command("cmd", "/C", command)
-		} else {
-			cmd = exec.Command("/bin/sh", "-c", command)
-		}
-
-		cmd.Stdout = stdout
-		cmd.Stderr = stderr
-
-		err := cmd.Run()
-		if err != nil {
-			slog.Error("error", "error", err)
+		if err := e.Execute(ctx, stdout, stderr, command); err != nil {
+			return err
 		}
 	}
 
-	e.Finished = true
+	return nil
 }

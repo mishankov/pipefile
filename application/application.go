@@ -17,12 +17,17 @@ func New(pipeFile pipefile.Pipefile) *Application {
 }
 
 func (a *Application) Run(ctx context.Context) error {
-	opts := []tea.ProgramOption{
-		tea.WithAltScreen(),       // to use full screen
-		tea.WithMouseCellMotion(), // turn on mouse support so we can track the mouse wheel
+	model, err := newModel(ctx, a.pipeFile)
+	if err != nil {
+		return err
 	}
 
-	if _, err := tea.NewProgram(newModel(a.pipeFile), opts...).Run(); err != nil {
+	opts := []tea.ProgramOption{
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+	}
+
+	if _, err := tea.NewProgram(model, opts...).Run(); err != nil {
 		fmt.Printf("Uh oh, there was an error: %v\n", err)
 		return err
 	}
