@@ -113,6 +113,9 @@ func buildSteps(file pipefile.Pipefile, baseDir string) ([]step, error) {
 			return nil, fmt.Errorf("step %q dir %s", fileStep.Id, err)
 		}
 
+		vars := mergeVars(file.Vars, fileStep.Vars)
+		cmds := expandCommands(fileStep.Cmds, vars)
+
 		indexByID[fileStep.Id] = i
 		steps = append(steps, step{
 			id:             fileStep.Id,
@@ -120,7 +123,7 @@ func buildSteps(file pipefile.Pipefile, baseDir string) ([]step, error) {
 			dir:            dir,
 			outputBuff:     &logBuffer{},
 			status:         stepStatusReady,
-			cmds:           append([]string(nil), fileStep.Cmds...),
+			cmds:           cmds,
 			needs:          append([]string(nil), fileStep.Needs...),
 			remainingNeeds: len(fileStep.Needs),
 		})

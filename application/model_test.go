@@ -131,6 +131,141 @@ func TestBuildStepsWithoutDirLeavesExecutionDirEmpty(t *testing.T) {
 	}
 }
 
+func TestBuildStepsExpandsGlobalVarsInCommands(t *testing.T) {
+	t.Parallel()
+
+	steps, err := buildSteps(pipefile.Pipefile{
+		Vars: map[string]string{"var1": "some value"},
+		Steps: []pipefile.PipeStep{{
+			Id:   "build",
+			Cmds: []string{"echo @{var1}"},
+		}},
+	}, "")
+	if err != nil {
+		t.Fatalf("buildSteps() error = %v", err)
+	}
+
+	if got := steps[0].cmds; !reflect.DeepEqual(got, []string{"echo some value"}) {
+		t.Fatalf("unexpected cmds: got %v", got)
+	}
+}
+
+func TestBuildStepsExpandsStepVarsInCommands(t *testing.T) {
+	t.Parallel()
+
+	steps, err := buildSteps(pipefile.Pipefile{
+		Steps: []pipefile.PipeStep{{
+			Id:   "build",
+			Vars: map[string]string{"stepVar": "wow"},
+			Cmds: []string{"echo @{stepVar}"},
+		}},
+	}, "")
+	if err != nil {
+		t.Fatalf("buildSteps() error = %v", err)
+	}
+
+	if got := steps[0].cmds; !reflect.DeepEqual(got, []string{"echo wow"}) {
+		t.Fatalf("unexpected cmds: got %v", got)
+	}
+}
+
+func TestBuildStepsStepVarsOverrideGlobalVars(t *testing.T) {
+	t.Parallel()
+
+	steps, err := buildSteps(pipefile.Pipefile{
+		Vars: map[string]string{"name": "global"},
+		Steps: []pipefile.PipeStep{{
+			Id:   "build",
+			Vars: map[string]string{"name": "step"},
+			Cmds: []string{"echo @{name}"},
+		}},
+	}, "")
+	if err != nil {
+		t.Fatalf("buildSteps() error = %v", err)
+	}
+
+	if got := steps[0].cmds; !reflect.DeepEqual(got, []string{"echo step"}) {
+		t.Fatalf("unexpected cmds: got %v", got)
+	}
+}
+
+func TestBuildStepsExpandsMultiplePlaceholders(t *testing.T) {
+	t.Parallel()
+
+	steps, err := buildSteps(pipefile.Pipefile{
+		Vars: map[string]string{"var1": "one"},
+		Steps: []pipefile.PipeStep{{
+			Id:   "build",
+			Vars: map[string]string{"stepVar": "two"},
+			Cmds: []string{"echo @{stepVar} @{var1} @{stepVar}"},
+		}},
+	}, "")
+	if err != nil {
+		t.Fatalf("buildSteps() error = %v", err)
+	}
+
+	if got := steps[0].cmds; !reflect.DeepEqual(got, []string{"echo two one two"}) {
+		t.Fatalf("unexpected cmds: got %v", got)
+	}
+}
+
+func TestBuildStepsLeavesUnknownVarsLiteral(t *testing.T) {
+	t.Parallel()
+
+	steps, err := buildSteps(pipefile.Pipefile{
+		Steps: []pipefile.PipeStep{{
+			Id:   "build",
+			Cmds: []string{"echo @{missing}"},
+		}},
+	}, "")
+	if err != nil {
+		t.Fatalf("buildSteps() error = %v", err)
+	}
+
+	if got := steps[0].cmds; !reflect.DeepEqual(got, []string{"echo @{missing}"}) {
+		t.Fatalf("unexpected cmds: got %v", got)
+	}
+}
+
+func TestBuildStepsLeavesShellPlaceholdersUntouched(t *testing.T) {
+	t.Parallel()
+
+	steps, err := buildSteps(pipefile.Pipefile{
+		Vars: map[string]string{"var1": "some value"},
+		Steps: []pipefile.PipeStep{{
+			Id:   "build",
+			Cmds: []string{"echo @{var1} ${HOME}"},
+		}},
+	}, "")
+	if err != nil {
+		t.Fatalf("buildSteps() error = %v", err)
+	}
+
+	if got := steps[0].cmds; !reflect.DeepEqual(got, []string{"echo some value ${HOME}"}) {
+		t.Fatalf("unexpected cmds: got %v", got)
+	}
+}
+
+func TestBuildStepsDoesNotRecursivelyExpandVarValues(t *testing.T) {
+	t.Parallel()
+
+	steps, err := buildSteps(pipefile.Pipefile{
+		Vars: map[string]string{"name": "@{nested}"},
+		Steps: []pipefile.PipeStep{{
+			Id:   "build",
+			Vars: map[string]string{"nested": "value"},
+			Cmds: []string{"echo @{name}"},
+		}},
+	}, "")
+	if err != nil {
+		t.Fatalf("buildSteps() error = %v", err)
+	}
+
+	if got := steps[0].cmds; !reflect.DeepEqual(got, []string{"echo @{nested}"}) {
+		t.Fatalf("unexpected cmds: got %v", got)
+	}
+}
+
 func TestScheduleSingleStep(t *testing.T) {
 	t.Parallel()
 

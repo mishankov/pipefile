@@ -1,9 +1,14 @@
+[vars]
+image = "pipefile/test"
+
 [[steps]]
 id = "build"
 name = "Build"
+vars = { buildMessage = "Built!" }
 cmds = [
     # "echo 'Built!'"
-    "docker build -t pipefile/test ."
+    "echo '@{buildMessage}'",
+    "docker build -t @{image} ."
 ]
 
 [[steps]]

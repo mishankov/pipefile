@@ -1,13 +1,15 @@
 package pipefile
 
 type PipeStep struct {
-	Id    string
-	Name  string
-	Needs []string
-	Dir   string
-	Cmds  []string
+	Id    string            `toml:"id"`
+	Name  string            `toml:"name"`
+	Needs []string          `toml:"needs"`
+	Dir   string            `toml:"dir"`
+	Cmds  []string          `toml:"cmds"`
+	Vars  map[string]string `toml:"vars"`
 }
 
 type Pipefile struct {
-	Steps []PipeStep
+	Steps []PipeStep        `toml:"steps"`
+	Vars  map[string]string `toml:"vars"`
 }
